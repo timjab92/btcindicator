@@ -1,8 +1,11 @@
 import pandas as pd
 from btcindicator.params import *
 from btcindicator.utils import *
+from btcindicator.model import *
 import requests
 from sklearn.preprocessing import MinMaxScaler
+from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras import Sequential, layers
 
 
 
@@ -13,10 +16,11 @@ def get_data():
     r = requests.get(url, allow_redirects=True, verify=False)
 
     print('writing data to file...')
-    open('../raw_data/Bitstamp_BTCUSD_1h.csv', 'wb').write(r.content)
+    open('raw_data/Bitstamp_BTCUSD_1h.csv', 'wb').write(r.content)
 
     print("finished!")
-    btc = pd.read_csv("../raw_data/Bitstamp_BTCUSD_1h.csv", skiprows=1)
+    btc = pd.read_csv(
+        "raw_data/Bitstamp_BTCUSD_1h.csv", skiprows=1)
     btc.date = pd.to_datetime(btc.date)
     btc.set_index("date", inplace=True)
 
@@ -52,6 +56,53 @@ def get_sequences(data, window_size=WINDOW_SIZE, horizon=HORIZON):
     y = np.array(fake_y)[:, :, 0]
     return x, y
 
+##### CLASS TRAINER #####
+
+class Trainer(object):
+    def __init__(self):
+        """"This class has two options: train and predict"""
+
+    def build_model(self):
+        # Build the LSTM model
+        model = Sequential()
+        model.add(layers.LSTM(units=16,
+                              return_sequences=True,
+                              activation="tanh",
+                              input_shape=X_train[0].shape))
+        model.add(layers.LSTM(units=8,
+                              return_sequences=False,
+                              activation="relu"
+                              ))
+        model.add(layers.Dense(HORIZON, activation="linear"))
+        model.compile(loss="mse",
+                      optimizer="adam",  # rmsprop
+                      metrics="mae")
+
+        return model
+
+
+    def train_model(self):
+        print("building model...")
+        model = build_model()
+
+        es = EarlyStopping(patience=5,
+                           restore_best_weights=True,
+                           monitor="mae"
+                           )
+        print("training model...")
+        history = model.fit(X_train, y_train,
+                        validation_split=0.3,
+                        batch_size=16,
+                        epochs=50,
+                        verbose=2,
+                        callbacks=[es]
+                        )
+        print("training complete...")
+        return model.evaluate(X_test, np.array(y_test), verbose=1)
+
+
+
+
 
 
 if __name__ == '__main__':
@@ -69,3 +120,6 @@ if __name__ == '__main__':
     X_train, y_train = get_sequences(data_train_scaled)
     X_test, y_test = get_sequences(data_test_scaled)
     print(f"X_train.shape {X_train.shape}, y_train.shape {y_train.shape}")
+    trainer = Trainer()
+    trainer.train_model()
+    print("finitooooo!!")
